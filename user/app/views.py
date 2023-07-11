@@ -1,11 +1,12 @@
 from fastapi import APIRouter, status, Request, Response, HTTPException
 from . import schemas, auth
 from .models import User
+from core.utils import APIResponse
 
 router = APIRouter()
 
 
-@router.post('/register/', status_code=status.HTTP_201_CREATED)
+@router.post('/register/', status_code=status.HTTP_201_CREATED, responses={201: {'model': APIResponse}})
 def register_user(request: Request, response: Response, data: schemas.RegisterValidation):
     try:
         data = data.dict()
@@ -16,7 +17,7 @@ def register_user(request: Request, response: Response, data: schemas.RegisterVa
         return {'message': ex.args[0], 'status': 400, 'data': {}}
 
 
-@router.post('/login/', status_code=status.HTTP_200_OK)
+@router.post('/login/', status_code=status.HTTP_200_OK, responses={200: {'model': APIResponse}})
 def login_user(request: Request, response: Response, data: schemas.Login):
     data = data.dict()
     user = auth.authenticate(data)

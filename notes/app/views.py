@@ -4,12 +4,14 @@ from . import schemas, dependencies
 from .models import Notes, Collaborator
 from settings import logger, settings
 from fastapi.responses import JSONResponse
+from core.utils import APIResponse
 
 router = APIRouter(dependencies=[Security(APIKeyHeader(name='Authorization', auto_error=False)),
                                  Depends(dependencies.check_user)])
 
 
-@router.post('/create/', status_code=status.HTTP_201_CREATED, response_class=JSONResponse)
+@router.post('/create/', status_code=status.HTTP_201_CREATED, response_class=JSONResponse,
+             responses={201: {'model': APIResponse}})
 def create_note(request: Request, data: schemas.NoteSchema, response: Response):
     try:
         data = data.dict()
@@ -22,7 +24,8 @@ def create_note(request: Request, data: schemas.NoteSchema, response: Response):
         return {"message": str(ex)}
 
 
-@router.get("/get/", status_code=status.HTTP_200_OK, response_class=JSONResponse)
+@router.get("/get/", status_code=status.HTTP_200_OK, response_class=JSONResponse,
+            responses={200: {'model': APIResponse}})
 def get_note(request: Request, response: Response):
     try:
         note_list = list(map(lambda x: x.to_dict(), Notes.objects.filter(user_id=request.state.user.get('id'))))
@@ -36,7 +39,8 @@ def get_note(request: Request, response: Response):
         return {"message": str(ex)}
 
 
-@router.put("/update/", status_code=status.HTTP_200_OK, response_class=JSONResponse)
+@router.put("/update/", status_code=status.HTTP_200_OK, response_class=JSONResponse,
+            responses={200: {'model': APIResponse}})
 def update_note(request: Request, response: Response, note_id: int, data: schemas.NoteSchema):
     try:
         note = Notes.objects.get(id=note_id, user_id=request.state.user.get('id'))
@@ -50,7 +54,8 @@ def update_note(request: Request, response: Response, note_id: int, data: schema
         return {"message": str(ex)}
 
 
-@router.delete("/delete/", status_code=status.HTTP_200_OK, response_class=JSONResponse)
+@router.delete("/delete/", status_code=status.HTTP_200_OK, response_class=JSONResponse,
+               responses={200: {'model': APIResponse}})
 def delete_note(request: Request, response: Response, note_id: int):
     try:
         Notes.objects.delete(id=note_id, user_id=request.state.user.get('id'))
@@ -61,7 +66,8 @@ def delete_note(request: Request, response: Response, note_id: int):
         return {"message": str(ex)}
 
 
-@router.post('/addCollaborator/', status_code=status.HTTP_200_OK)
+@router.post('/addCollaborator/', status_code=status.HTTP_200_OK,
+             responses={200: {'model': APIResponse}})
 def add_collaborator(request: Request, response: Response, data: schemas.Collaborator):
     try:
         note = Notes.objects.get(id=data.note_id, user_id=request.state.user.get('id'))
@@ -79,7 +85,8 @@ def add_collaborator(request: Request, response: Response, data: schemas.Collabo
         return {"message": str(ex)}
 
 
-@router.delete('/deleteCollaborator/', status_code=status.HTTP_200_OK)
+@router.delete('/deleteCollaborator/', status_code=status.HTTP_200_OK,
+               responses={200: {'model': APIResponse}})
 def delete_collaborator(request: Request, response: Response, data: schemas.Collaborator):
     try:
         note = Notes.objects.get(id=data.note_id, user_id=request.state.user.get('id'))
@@ -93,6 +100,7 @@ def delete_collaborator(request: Request, response: Response, data: schemas.Coll
                 raise Exception(f'Note {data.note_id} is not collaborated with user {user}')
             collab_obj.append(collab_user)
         [Collaborator.objects.delete(id=x.id) for x in collab_obj]
+        # map(lambda x: Collaborator.objects.delete(id=x.id), collab_obj)
         return {'message': 'Collaborator deleted', 'status': 200, 'data': {}}
     except Exception as ex:
         logger.exception(ex)
