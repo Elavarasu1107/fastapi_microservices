@@ -8,3 +8,8 @@ class LabelSchema(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class LabelAssociate(BaseModel):
+    note_id: int
+    labels: Optional[List[int]]

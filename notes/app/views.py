@@ -26,13 +26,25 @@ def create_note(request: Request, data: schemas.NoteSchema, response: Response):
 
 @router.get("/get/", status_code=status.HTTP_200_OK, response_class=JSONResponse,
             responses={200: {'model': APIResponse}})
-def get_note(request: Request, response: Response):
+def get_all_notes(request: Request, response: Response):
     try:
         note_list = list(map(lambda x: x.to_dict(), Notes.objects.filter(user_id=request.state.user.get('id'))))
         collab_notes = list(map(lambda x: Notes.objects.get(id=x.note_id).to_dict(),
                                 Collaborator.objects.filter(user_id=request.state.user.get('id'))))
         note_list.extend(collab_notes)
         return {'message': 'Notes retrieved', 'status': 200, 'data': note_list}
+    except Exception as ex:
+        logger.exception(ex)
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": str(ex)}
+
+
+@router.get("/retrieve/", status_code=status.HTTP_200_OK, response_class=JSONResponse,
+            responses={200: {'model': APIResponse}})
+def retrieve(request: Request, response: Response, note_id: int):
+    try:
+        note = Notes.objects.get(id=note_id, user_id=request.state.user.get('id'))
+        return {'message': 'Notes retrieved', 'status': 200, 'data': note}
     except Exception as ex:
         logger.exception(ex)
         response.status_code = status.HTTP_400_BAD_REQUEST
@@ -100,7 +112,6 @@ def delete_collaborator(request: Request, response: Response, data: schemas.Coll
                 raise Exception(f'Note {data.note_id} is not collaborated with user {user}')
             collab_obj.append(collab_user)
         [Collaborator.objects.delete(id=x.id) for x in collab_obj]
-        # map(lambda x: Collaborator.objects.delete(id=x.id), collab_obj)
         return {'message': 'Collaborator deleted', 'status': 200, 'data': {}}
     except Exception as ex:
         logger.exception(ex)

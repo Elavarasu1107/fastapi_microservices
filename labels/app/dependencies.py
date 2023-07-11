@@ -19,3 +19,11 @@ def fetch_user(user_id: int):
     if res.status_code >= 400:
         return None
     return res.json().get('data')
+
+
+def fetch_note(note_id: int, token: str):
+    res = requests.get(f'{settings.base_url}:{settings.note_port}/note/retrieve/',
+                       params={'note_id': note_id}, headers={'Authorization': token})
+    if res.status_code >= 400:
+        return None
+    return res.json().get('data')

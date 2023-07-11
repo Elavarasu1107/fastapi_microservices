@@ -62,8 +62,8 @@ class Manager:
 
     @session_handler
     def update(self, **payload):
-        # instance = self.get(id=payload.get("id"))
-        instance = self.session.query(self.model).filter_by(id=payload.get("id")).one()
+        instance = self.get(id=payload.get("id"))
+        # instance = self.session.query(self.model).filter_by(id=payload.get("id")).one()
         for k, v in payload.items():
             setattr(instance, k, v)
         self.session.commit()
@@ -72,27 +72,27 @@ class Manager:
 
     @session_handler
     def delete(self, **payload):
-        # instance = self.get(id=payload.get("id"))
-        instance = self.session.query(self.model).filter_by(id=payload.get("id")).one()
+        instance = self.get(id=payload.get("id"))
+        # instance = self.session.query(self.model).filter_by(id=payload.get("id")).one()
         self.session.delete(instance)
         self.session.commit()
 
-    @session_handler
+    # @session_handler
     def get(self, **payload):
         instance = self.session.query(self.model).filter_by(**payload).one()
         return instance
 
-    @session_handler
+    # @session_handler
     def get_or_none(self, **payload):
         instance = self.session.query(self.model).filter_by(**payload).one_or_none()
         return instance
 
-    @session_handler
+    # @session_handler
     def filter(self, **payload):
         instance_list = self.session.query(self.model).filter_by(**payload).all()
         return instance_list
 
-    @session_handler
+    # @session_handler
     def all(self):
         instance_list = self.session.query(self.model).all()
         return instance_list

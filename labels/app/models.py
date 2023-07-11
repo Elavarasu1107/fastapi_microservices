@@ -30,3 +30,11 @@ class Labels(LabelBase):
     def to_dict(self):
         return {"id": self.id, "title": self.title, "color": self.color, 'user_id': self.user_id}
 
+
+class LabelCollab(LabelBase):
+    __tablename__ = 'label_notes'
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    note_id = Column(BigInteger, nullable=False)
+    label_id = Column(BigInteger, nullable=False)
+    objects = manager.Manager(SessionLocal)
