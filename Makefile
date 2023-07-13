@@ -12,4 +12,7 @@ run_note:
 run_label:
 	@uvicorn main:label_app --port ${LABEL_PORT} --reload
 
+consumer:
+	@python core/rmq_consumer.py
+
 endif
