@@ -1,13 +1,15 @@
 ifeq ($(OS), Windows_NT)
+include .env
 init:
 	@pip install -r requirements.txt
 
 run_user:
-	@uvicorn main:user_app --port 8000 --reload
+	@uvicorn main:user_app --port ${USER_PORT} --reload
 
 run_note:
-	@uvicorn main:note_app --port 8001 --reload
+	@uvicorn main:note_app --port ${NOTE_PORT} --reload
 
 run_label:
-	@uvicorn main:label_app --port 8002 --reload
+	@uvicorn main:label_app --port ${LABEL_PORT} --reload
+
 endif

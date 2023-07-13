@@ -27,8 +27,12 @@ class User(UserBase):
     phone = Column(BigInteger)
     location = Column(String(150))
     is_superuser = Column(Boolean, default=False)
+    is_verified = Column(Boolean, default=False)
 
     objects = manager.Manager(SessionLocal)
+
+    def save(self):
+        self.objects.save()
 
     def __repr__(self):
         return f"User({self.id})"

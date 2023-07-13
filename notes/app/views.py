@@ -26,12 +26,15 @@ def create_note(request: Request, data: schemas.NoteSchema, response: Response):
 
 @router.get("/get/", status_code=status.HTTP_200_OK, response_class=JSONResponse,
             responses={200: {'model': APIResponse}})
-def get_all_notes(request: Request, response: Response):
+def get_user_notes(request: Request, response: Response):
     try:
         note_list = list(map(lambda x: x.to_dict(), Notes.objects.filter(user_id=request.state.user.get('id'))))
         collab_notes = list(map(lambda x: Notes.objects.get(id=x.note_id).to_dict(),
                                 Collaborator.objects.filter(user_id=request.state.user.get('id'))))
         note_list.extend(collab_notes)
+        [note_list[i].update({'label': dependencies.fetch_label(note_list[i].get('id'),
+                                                                request.headers.get('authorization'))})
+         for i in range(len(note_list))]
         return {'message': 'Notes retrieved', 'status': 200, 'data': note_list}
     except Exception as ex:
         logger.exception(ex)

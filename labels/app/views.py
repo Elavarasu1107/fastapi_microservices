@@ -36,6 +36,19 @@ def get_label(request: Request, response: Response):
         return {"message": str(ex), 'status': response.status_code, 'data': {}}
 
 
+@router.get("/retrieve/", status_code=status.HTTP_200_OK, response_class=JSONResponse,
+            responses={200: {'model': APIResponse}})
+def retrieve(request: Request, response: Response, note_id: int):
+    try:
+        associate_label = LabelCollab.objects.filter(note_id=note_id)
+        associate_label = [Labels.objects.get(id=x.label_id).title for x in associate_label]
+        return {'message': 'Labels retrieved', 'status': 200, 'data': associate_label}
+    except Exception as ex:
+        logger.exception(ex)
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": str(ex)}
+
+
 @router.put("/update/", status_code=status.HTTP_200_OK, response_class=JSONResponse,
             responses={200: {'model': APIResponse}})
 def update_label(request: Request, response: Response, label_id: int, data: schemas.LabelSchema):

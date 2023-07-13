@@ -23,6 +23,9 @@ class Notes(NoteBase):
     user_id = Column(BigInteger, nullable=False)
     objects = manager.Manager(SessionLocal)
 
+    def save(self):
+        self.objects.save()
+
     def __repr__(self):
         return f"Notes({self.id!r})"
 
@@ -37,3 +40,9 @@ class Collaborator(NoteBase):
     user_id = Column(BigInteger, nullable=False)
     note_id = Column(BigInteger, nullable=False)
     objects = manager.Manager(SessionLocal)
+
+    def save(self):
+        self.objects.save()
+
+    def __str__(self):
+        return f'Collaborator({self.id})'

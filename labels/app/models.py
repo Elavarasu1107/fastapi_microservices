@@ -27,6 +27,9 @@ class Labels(LabelBase):
     def __repr__(self):
         return f"Label({self.id!r})"
 
+    def save(self):
+        self.objects.save()
+
     def to_dict(self):
         return {"id": self.id, "title": self.title, "color": self.color, 'user_id': self.user_id}
 
@@ -38,3 +41,9 @@ class LabelCollab(LabelBase):
     note_id = Column(BigInteger, nullable=False)
     label_id = Column(BigInteger, nullable=False)
     objects = manager.Manager(SessionLocal)
+
+    def save(self):
+        self.objects.save()
+
+    def __str__(self):
+        return f'LabelCollab({self.id})'
