@@ -22,8 +22,11 @@ def fetch_user(user_id: int):
 
 
 def fetch_label(note_id, token):
-    res = requests.get(f'{settings.base_url}:{settings.label_port}/label/retrieve/',
-                       params={'note_id': note_id}, headers={'Authorization': token})
+    try:
+        res = requests.get(f'{settings.base_url}:{settings.label_port}/label/retrieve/',
+                           params={'note_id': note_id}, headers={'Authorization': token})
+    except requests.ConnectionError:
+        return '404. Unable to communicate with label services'
     if res.status_code >= 400:
         return None
     return res.json().get('data')
