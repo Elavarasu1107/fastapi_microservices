@@ -26,6 +26,9 @@ def login_user(request: Request, response: Response, data: schemas.Login):
     user = auth.authenticate(data)
     if not user:
         raise HTTPException(status_code=401, detail='Invalid Credentials')
+    producer = Producer()
+    producer.publish(method='cb_test', payload={'message': 'Hello'})
+    print('>>>>>>>>', producer.response)
     return {
         'access': auth.access_token({'user': user.id}, aud=auth.Audience.login.value),
         'refresh': auth.refresh_token({'user': user.id}, aud=auth.Audience.login.value)

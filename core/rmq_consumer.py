@@ -18,7 +18,7 @@ class Consumer:
         self.sender = environ.get('EMAIL_HOST_USER')
         self.sender_password = environ.get('EMAIL_HOST_PASSWORD')
         self.callbacks = {i: getattr(self, i) for i in dir(self) if i.startswith('cb_') and callable(getattr(self, i))}
-        tuple(map(lambda x: self.channel.queue_declare(queue=x, durable=True), self.callbacks.keys()))
+        tuple(map(lambda x: self.channel.queue_declare(queue=x), self.callbacks.keys()))
 
     def cb_mailer(self, ch, method, properties, body):
         try:
@@ -37,9 +37,14 @@ class Consumer:
         except Exception as ex:
             print(ex)
 
-    def cb_test(self,  ch, method, properties, body):
+    def cb_test(self, ch, method, properties, body):
         try:
-            pass
+            ch.basic_publish(
+                exchange='',
+                routing_key=properties.reply_to,
+                properties=pika.BasicProperties(correlation_id=properties.correlation_id),
+                body=f'It a reply to {properties.correlation_id}'
+            )
         except Exception as ex:
             print(ex)
 
