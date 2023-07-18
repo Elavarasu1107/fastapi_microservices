@@ -15,4 +15,7 @@ run_label:
 consumer:
 	@python core/rmq_consumer.py
 
+celery:
+	@watchmedo auto-restart --pattern=*.py --recursive -- celery -A core.tasks.celery worker -l info --pool=solo
+
 endif

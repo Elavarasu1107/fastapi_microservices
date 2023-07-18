@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     user_port: int
     note_port: int
     label_port: int
+    celery_broker: str
+    celery_result: str
 
     class Config:
         env_file = ".env"

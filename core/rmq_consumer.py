@@ -34,11 +34,18 @@ class Consumer:
                 smtp.sendmail(self.sender, payload.get('recipient'), msg.as_string())
                 smtp.quit()
                 print("[*] Mail sent to ", payload.get('recipient'))
+            ch.basic_publish(
+                exchange='',
+                routing_key=properties.reply_to,
+                properties=pika.BasicProperties(correlation_id=properties.correlation_id),
+                body=f'Success {properties.correlation_id}'
+            )
         except Exception as ex:
             print(ex)
 
     def cb_test(self, ch, method, properties, body):
         try:
+            print('Message Received sending back reply')
             ch.basic_publish(
                 exchange='',
                 routing_key=properties.reply_to,

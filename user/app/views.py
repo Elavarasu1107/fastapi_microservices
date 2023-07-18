@@ -3,6 +3,7 @@ from . import schemas, auth
 from .models import User
 from core.utils import APIResponse
 from core.rmq_producer import Producer
+from core.tasks import send_mail
 
 router = APIRouter()
 
@@ -13,7 +14,7 @@ def register_user(request: Request, response: Response, data: schemas.RegisterVa
         data = data.dict()
         user = User.objects.create_user(**data)
         message = f'{request.base_url}verify?token={auth.access_token({"user": user.id}, aud=auth.Audience.register.value)}'
-        Producer().publish(method='cb_mailer', payload={'recipient': user.email, 'message': message})
+        send_mail.delay(method='cb_mailer', payload={'recipient': user.email, 'message': message})
         return {'message': 'User registered', 'status': 201, 'data': user}
     except Exception as ex:
         response.status_code = status.HTTP_400_BAD_REQUEST
@@ -26,9 +27,6 @@ def login_user(request: Request, response: Response, data: schemas.Login):
     user = auth.authenticate(data)
     if not user:
         raise HTTPException(status_code=401, detail='Invalid Credentials')
-    producer = Producer()
-    producer.publish(method='cb_test', payload={'message': 'Hello'})
-    print('>>>>>>>>', producer.response)
     return {
         'access': auth.access_token({'user': user.id}, aud=auth.Audience.login.value),
         'refresh': auth.refresh_token({'user': user.id}, aud=auth.Audience.login.value)
