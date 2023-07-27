@@ -6,4 +6,4 @@ def set_password(raw_password):
 
 
 def check_password(user, raw_password):
-    return pbkdf2_sha256.verify(raw_password, user.password)
+    return pbkdf2_sha256.verify(raw_password, user['password'])

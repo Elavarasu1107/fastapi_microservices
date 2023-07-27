@@ -6,6 +6,12 @@ import ssl
 from email.message import EmailMessage
 from dotenv import load_dotenv
 from os import environ
+import sys
+
+sys.path.append('./')
+
+from user.app import auth
+from settings import logger
 
 load_dotenv()
 
@@ -22,7 +28,7 @@ class Consumer:
 
     def cb_mailer(self, ch, method, properties, body):
         try:
-            payload = json.loads(body.decode('UTF-8'))
+            payload = json.loads(body)
             msg = EmailMessage()
             msg['From'] = self.sender
             msg['To'] = payload.get('recipient')
@@ -33,27 +39,37 @@ class Consumer:
                 smtp.login(user=self.sender, password=self.sender_password)
                 smtp.sendmail(self.sender, payload.get('recipient'), msg.as_string())
                 smtp.quit()
-                print("[*] Mail sent to ", payload.get('recipient'))
             ch.basic_publish(
                 exchange='',
                 routing_key=properties.reply_to,
                 properties=pika.BasicProperties(correlation_id=properties.correlation_id),
-                body=f'Success {properties.correlation_id}'
+                body=json.dumps({'message': 'Mail sent successfully'})
             )
+            print("Mail sent to ", payload.get('recipient'))
         except Exception as ex:
             print(ex)
+            logger.exception(ex)
 
-    def cb_test(self, ch, method, properties, body):
+    def cb_check_user(self, ch, method, properties, body):
         try:
-            print('Message Received sending back reply')
+            user_data = auth.api_key_authenticate(json.loads(body), auth.Audience.login.value)
+            message = None
+            if user_data:
+                user_data['_id'] = str(user_data['_id'])
+                message = user_data['_id']
+            else:
+                user_data = {}
+                message = "User not found"
             ch.basic_publish(
                 exchange='',
                 routing_key=properties.reply_to,
                 properties=pika.BasicProperties(correlation_id=properties.correlation_id),
-                body=f'It a reply to {properties.correlation_id}'
+                body=json.dumps(user_data)
             )
+            print(f'{message}: verified and sent response successfully')
         except Exception as ex:
             print(ex)
+            logger.exception(ex)
 
     def receiver(self):
         [self.channel.basic_consume(queue=i, on_message_callback=j, auto_ack=True) for i, j in self.callbacks.items()]

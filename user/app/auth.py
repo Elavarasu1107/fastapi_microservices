@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta
+
+from bson import ObjectId
+
 from settings import settings
 from fastapi import Security, Request, HTTPException
 from fastapi.security import APIKeyHeader
-from user.app.models import User
+from core.monogodb import User
 import jwt
 from user.app import password
 from typing import List
@@ -42,17 +45,16 @@ def decode_token(token: str, aud: List[str] = Audience.default.value):
 
 
 def authenticate(data):
-    user = User.objects.get_or_none(username=data['username'])
+    user = User.find_one({'username': data['username']})
     if user and password.check_password(user, data['password']):
         return user
     return None
 
 
-def api_key_authenticate(api_key: str, aud: str):
+def api_key_authenticate(payload: dict, aud: str):
     try:
-        payload = decode_token(api_key, aud=[aud])
-        user = User.objects.get_or_none(id=payload.get('user'))
+        user = User.find_one({'_id': ObjectId(payload.get('user'))}, {'password': 0})
     except Exception as ex:
         raise ex
-    return user.to_dict() if not aud == 'register' else user
+    return user
 

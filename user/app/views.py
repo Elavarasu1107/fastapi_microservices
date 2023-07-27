@@ -1,9 +1,11 @@
 from fastapi import APIRouter, status, Request, Response, HTTPException
 from . import schemas, auth
-from .models import User
 from core.utils import APIResponse
 from core.rmq_producer import Producer
 from core.tasks import send_mail
+from core.monogodb import User
+from bson.objectid import ObjectId
+from settings import logger
 
 router = APIRouter()
 
@@ -11,25 +13,26 @@ router = APIRouter()
 @router.post('/register/', status_code=status.HTTP_201_CREATED, responses={201: {'model': APIResponse}})
 def register_user(request: Request, response: Response, data: schemas.RegisterValidation):
     try:
-        data = data.dict()
-        user = User.objects.create_user(**data)
-        message = f'{request.base_url}verify?token={auth.access_token({"user": user.id}, aud=auth.Audience.register.value)}'
+        user = User.insert_one(data.dict())
+        user = User.find_one({'_id': ObjectId(user.inserted_id)}, {'password': 0})
+        user = schemas.UserResponse(**user)
+        message = f'{request.base_url}verify?token={auth.access_token({"user": user.id},aud=auth.Audience.register.value)}'
         send_mail.delay(method='cb_mailer', payload={'recipient': user.email, 'message': message})
         return {'message': 'User registered', 'status': 201, 'data': user}
     except Exception as ex:
         response.status_code = status.HTTP_400_BAD_REQUEST
+        logger.exception(ex)
         return {'message': ex.args[0], 'status': 400, 'data': {}}
 
 
 @router.post('/login/', status_code=status.HTTP_200_OK, responses={200: {'model': APIResponse}})
 def login_user(request: Request, response: Response, data: schemas.Login):
-    data = data.dict()
-    user = auth.authenticate(data)
+    user = auth.authenticate(data=data.dict())
     if not user:
         raise HTTPException(status_code=401, detail='Invalid Credentials')
     return {
-        'access': auth.access_token({'user': user.id}, aud=auth.Audience.login.value),
-        'refresh': auth.refresh_token({'user': user.id}, aud=auth.Audience.login.value)
+        'access': auth.access_token({'user': str(user['_id'])}, aud=auth.Audience.login.value),
+        'refresh': auth.refresh_token({'user': str(user['_id'])}, aud=auth.Audience.login.value)
     }
 
 
@@ -60,11 +63,11 @@ def verify_user(request: Request, response: Response, token: str = None):
     try:
         if not token:
             raise Exception('Token required to verify user registration')
-        user = auth.api_key_authenticate(token, auth.Audience.register.value)
+        payload = auth.decode_token(token=token, aud=auth.Audience.register.value)
+        user = auth.api_key_authenticate(payload, auth.Audience.register.value)
         if not user:
             raise Exception('User not found to verify')
-        user.is_verified = True
-        user.save()
+        user = User.find_one_and_update(user, {'$set': {'is_verified': True}})
         return {'message': 'User verified successfully', 'status': 200, 'data': {}}
     except Exception as ex:
         response.status_code = status.HTTP_400_BAD_REQUEST
