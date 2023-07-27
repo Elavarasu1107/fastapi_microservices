@@ -31,7 +31,7 @@ class NoteResponse(BaseModel):
 class Collaborator(BaseModel):
     note_id: str
     user_id: Optional[List[str]]
-    access: str = 'read_only'
+    grant_access: bool = False
 
     class Config:
         orm_mode = True

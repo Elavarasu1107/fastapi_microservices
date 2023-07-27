@@ -65,7 +65,14 @@ def update_note(request: Request, response: Response, note_id: str, data: schema
         note = Notes.find_one_and_update({'_id': ObjectId(note_id), 'user': ObjectId(request.state.user.get('_id'))},
                                          {'$set': data})
         if not note:
+            note = Notes.find_one({'_id': ObjectId(note_id),
+                                   f'collaborators.{request.state.user.get("_id")}': {'$exists': True}})
+        if not note:
             raise Exception('Note not found')
+        if not note.get('collaborators').get(request.state.user.get("_id"))[1].get('grant_access'):
+            raise Exception('Access denied to update this note')
+        note = Notes.update_one(note, {'$set': data})
+        note = Notes.find_one({'_id': ObjectId(note_id)})
         note = schemas.NoteResponse(**note)
         return {'message': 'Note updated', 'status': 200, 'data': note}
     except Exception as ex:
@@ -100,7 +107,10 @@ def add_collaborator(request: Request, response: Response, data: schemas.Collabo
             user_data = dependencies.fetch_user(user)
             if not user_data:
                 raise Exception(f'User {user} not found')
-            collaborators.update({f'collaborators.{ObjectId(user_data["_id"])}': data.access})
+            collaborators.update({f'collaborators.{ObjectId(user_data["_id"])}': [{'$ref': 'user',
+                                                                                   '$id': ObjectId(user_data["_id"]),
+                                                                                   '$db': 'fundoo_microservices'},
+                                                                                  {'grant_access': data.grant_access}]})
         note = Notes.find_one_and_update(note, {'$set': collaborators})
         return {'message': 'Collaborator added', 'status': 200, 'data': {}}
     except Exception as ex:
