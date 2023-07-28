@@ -1,14 +1,15 @@
 from bson import ObjectId
-from fastapi import APIRouter, Request, Response, status, Depends, Security, HTTPException
+from fastapi import APIRouter, Request, Response, status, Depends, Security
 from fastapi.security import APIKeyHeader
 from . import schemas, dependencies
-from settings import logger, settings
+from settings import logger
 from fastapi.responses import JSONResponse
 from core.utils import APIResponse
 from core.monogodb import Notes
+from user.app import auth
 
 router = APIRouter(dependencies=[Security(APIKeyHeader(name='Authorization', auto_error=False)),
-                                 Depends(dependencies.check_user)])
+                                 Depends(auth.check_user)])
 
 
 @router.post('/create/', status_code=status.HTTP_201_CREATED, response_class=JSONResponse,
@@ -31,9 +32,10 @@ def create_note(request: Request, data: schemas.NoteSchema, response: Response):
             responses={200: {'model': APIResponse}})
 def get_user_notes(request: Request, response: Response):
     try:
-        notes = list(Notes.find({'user': ObjectId(request.state.user.get('_id'))}))
-        collab_notes = list(Notes.find({f'collaborators.{request.state.user.get("_id")}': {'$exists': True}}))
-        notes.extend(collab_notes)
+        notes = list(Notes.find({'$or': [
+            {'user': ObjectId(request.state.user.get('_id'))},
+            {f'collaborators.{request.state.user.get("_id")}': {'$exists': True}}
+        ]}))
         notes = [schemas.NoteResponse(**i) for i in notes]
         return {'message': 'Notes retrieved', 'status': 200, 'data': notes}
     except Exception as ex:
@@ -62,15 +64,7 @@ def retrieve(request: Request, response: Response, note_id: str):
 def update_note(request: Request, response: Response, note_id: str, data: schemas.NoteSchema):
     try:
         data = data.dict()
-        note = Notes.find_one_and_update({'_id': ObjectId(note_id), 'user': ObjectId(request.state.user.get('_id'))},
-                                         {'$set': data})
-        if not note:
-            note = Notes.find_one({'_id': ObjectId(note_id),
-                                   f'collaborators.{request.state.user.get("_id")}': {'$exists': True}})
-        if not note:
-            raise Exception('Note not found')
-        if not note.get('collaborators').get(request.state.user.get("_id"))[1].get('grant_access'):
-            raise Exception('Access denied to update this note')
+        note = dependencies.note_availability(note_id=note_id, user_id=request.state.user.get('_id'))
         note = Notes.update_one(note, {'$set': data})
         note = Notes.find_one({'_id': ObjectId(note_id)})
         note = schemas.NoteResponse(**note)
@@ -104,13 +98,14 @@ def add_collaborator(request: Request, response: Response, data: schemas.Collabo
             raise Exception('Note not found')
         collaborators = {}
         for user in data.user_id:
-            user_data = dependencies.fetch_user(user)
+            user_data = auth.fetch_user(user)
             if not user_data:
                 raise Exception(f'User {user} not found')
             collaborators.update({f'collaborators.{ObjectId(user_data["_id"])}': [{'$ref': 'user',
                                                                                    '$id': ObjectId(user_data["_id"]),
                                                                                    '$db': 'fundoo_microservices'},
-                                                                                  {'grant_access': data.grant_access}]})
+                                                                                  {'grant_access': data.grant_access,
+                                                                                   'username': user_data['username']}]})
         note = Notes.find_one_and_update(note, {'$set': collaborators})
         return {'message': 'Collaborator added', 'status': 200, 'data': {}}
     except Exception as ex:
@@ -128,7 +123,7 @@ def delete_collaborator(request: Request, response: Response, data: schemas.Coll
             raise Exception('Note not found')
         collaborators = {}
         for user in data.user_id:
-            user_data = dependencies.fetch_user(user)
+            user_data = auth.fetch_user(user)
             if not user_data:
                 raise Exception(f'User {user} not found')
             collaborators.update({f'collaborators.{ObjectId(user_data["_id"])}': ""})
@@ -138,3 +133,44 @@ def delete_collaborator(request: Request, response: Response, data: schemas.Coll
         logger.exception(ex)
         response.status_code = status.HTTP_400_BAD_REQUEST
         return {"message": str(ex)}
+
+
+@router.post('/addLabelWithNote/', status_code=status.HTTP_200_OK, response_class=JSONResponse,
+             responses={200: {'model': APIResponse}})
+def add_label_with_note(request: Request, response: Response, data: schemas.LabelAssociate):
+    try:
+        note = dependencies.note_availability(note_id=data.note_id, user_id=request.state.user.get('_id'))
+        labels = {}
+        for label in data.labels:
+            label_data = dependencies.fetch_label(label_id=label, user_id=request.state.user.get('_id'))
+            if not label_data:
+                raise Exception(f'Label {label} not found')
+            labels.update({f'labels.{label_data["_id"]["$oid"]}': [{'$ref': 'label',
+                                                                    '$id': label_data["_id"]["$oid"],
+                                                                    '$db': 'fundoo_microservices'},
+                                                                   {'title': label_data['title']}]})
+        note = Notes.find_one_and_update(note, {'$set': labels})
+        return {'message': 'Label associated with note', 'status': 200, 'data': {}}
+    except Exception as ex:
+        logger.exception(ex)
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": str(ex), 'status': response.status_code, 'data': {}}
+
+
+@router.delete('/deleteLabelFromNote/', status_code=status.HTTP_200_OK, response_class=JSONResponse,
+               responses={200: {'model': APIResponse}})
+def delete_label_from_note(request: Request, response: Response, data: schemas.LabelAssociate):
+    try:
+        note = dependencies.note_availability(note_id=data.note_id, user_id=request.state.user.get('_id'))
+        labels = {}
+        for label in data.labels:
+            label_data = dependencies.fetch_label(label_id=label, user_id=request.state.user.get('_id'))
+            if not label_data:
+                raise Exception(f'Label {label} not found')
+            labels.update({f'labels.{label_data["_id"]["$oid"]}': ""})
+        Notes.update_one(note, {'$unset': labels})
+        return {'message': 'Label removed from note', 'status': 200, 'data': {}}
+    except Exception as ex:
+        logger.exception(ex)
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": str(ex), 'status': response.status_code, 'data': {}}

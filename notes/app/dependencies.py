@@ -1,34 +1,29 @@
-from fastapi import HTTPException, Request
-from settings import settings
-import requests
+from bson import ObjectId
+
+from core.monogodb import Notes
 from core.rmq_producer import Producer
-from user.app import auth
 
 
-def check_user(request: Request):
-    try:
-        if not request.headers.get('authorization'):
-            raise HTTPException(detail='Jwt token required', status_code=401)
-        payload = auth.decode_token(token=request.headers.get('authorization'), aud=auth.Audience.login.value)
-        producer = Producer()
-        producer.publish('cb_check_user', payload=payload)
-        request.state.user = producer.response
-    except Exception as ex:
-        raise HTTPException(detail=str(ex), status_code=400)
-
-
-def fetch_user(user_id: int):
+def fetch_label(label_id, user_id):
     producer = Producer()
-    producer.publish('cb_check_user', payload={'user': user_id})
+    producer.publish('cb_check_label', payload={'label': label_id, 'user': user_id})
     return producer.response
 
 
-def fetch_label(note_id, token):
-    try:
-        res = requests.get(f'{settings.base_url}:{settings.label_port}/label/retrieve/',
-                           params={'note_id': note_id}, headers={'Authorization': token})
-    except requests.ConnectionError:
-        return '404. Unable to communicate with label services'
-    if res.status_code >= 400:
-        return None
-    return res.json().get('data')
+def note_availability(note_id, user_id):
+    my_note = Notes.find_one({'_id': ObjectId(note_id), 'user': ObjectId(user_id)})
+    print(my_note)
+    note = None
+    if not my_note:
+        note = Notes.find_one({'_id': ObjectId(note_id),
+                               f'collaborators.{user_id}': {'$exists': True}})
+    print(note)
+    if not my_note and not note:
+        raise Exception('Note not found')
+    if not my_note and not user_id in note.get('collaborators'):
+        raise Exception('Cannot modify un-collaborated note')
+    if not my_note and not note.get('collaborators').get(user_id)[1].get('grant_access'):
+        raise Exception('Access denied to update this note')
+    if my_note:
+        note = my_note
+    return note

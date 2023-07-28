@@ -7,10 +7,11 @@ from email.message import EmailMessage
 from dotenv import load_dotenv
 from os import environ
 import sys
-
+from bson import json_util
 sys.path.append('./')
 
 from user.app import auth
+from labels.app import dependencies
 from settings import logger
 
 load_dotenv()
@@ -21,34 +22,8 @@ class Consumer:
     def __init__(self):
         self.connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
         self.channel = self.connection.channel()
-        self.sender = environ.get('EMAIL_HOST_USER')
-        self.sender_password = environ.get('EMAIL_HOST_PASSWORD')
         self.callbacks = {i: getattr(self, i) for i in dir(self) if i.startswith('cb_') and callable(getattr(self, i))}
         tuple(map(lambda x: self.channel.queue_declare(queue=x), self.callbacks.keys()))
-
-    def cb_mailer(self, ch, method, properties, body):
-        try:
-            payload = json.loads(body)
-            msg = EmailMessage()
-            msg['From'] = self.sender
-            msg['To'] = payload.get('recipient')
-            msg['Subject'] = 'Rabbit Fastapi Microservices'
-            msg.set_content(payload.get('message'))
-            context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(environ.get('SMTP'), int(environ.get('SMTP_PORT')), context=context) as smtp:
-                smtp.login(user=self.sender, password=self.sender_password)
-                smtp.sendmail(self.sender, payload.get('recipient'), msg.as_string())
-                smtp.quit()
-            ch.basic_publish(
-                exchange='',
-                routing_key=properties.reply_to,
-                properties=pika.BasicProperties(correlation_id=properties.correlation_id),
-                body=json.dumps({'message': 'Mail sent successfully'})
-            )
-            print("Mail sent to ", payload.get('recipient'))
-        except Exception as ex:
-            print(ex)
-            logger.exception(ex)
 
     def cb_check_user(self, ch, method, properties, body):
         try:
@@ -65,6 +40,26 @@ class Consumer:
                 routing_key=properties.reply_to,
                 properties=pika.BasicProperties(correlation_id=properties.correlation_id),
                 body=json.dumps(user_data)
+            )
+            print(f'{message}: verified and sent response successfully')
+        except Exception as ex:
+            print(ex)
+            logger.exception(ex)
+
+    def cb_check_label(self, ch, method, properties, body):
+        try:
+            label_data = dependencies.fetch_label(json.loads(body))
+            message = None
+            if label_data:
+                message = label_data['_id']
+            else:
+                label_data = {}
+                message = "Label not found"
+            ch.basic_publish(
+                exchange='',
+                routing_key=properties.reply_to,
+                properties=pika.BasicProperties(correlation_id=properties.correlation_id),
+                body=json_util.dumps(label_data)
             )
             print(f'{message}: verified and sent response successfully')
         except Exception as ex:

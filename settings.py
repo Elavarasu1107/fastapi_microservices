@@ -1,4 +1,4 @@
-from pydantic import BaseSettings, PostgresDsn
+from pydantic import BaseSettings, PostgresDsn, EmailStr
 import logging
 
 
@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     celery_broker: str
     celery_result: str
     admin_key: str
+    email_host_user: EmailStr
+    email_host_password: str
+    smtp: str
+    smtp_port: int
 
     class Config:
         env_file = ".env"

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from bson import ObjectId
 
+from core.rmq_producer import Producer
 from settings import settings
 from fastapi import Security, Request, HTTPException
 from fastapi.security import APIKeyHeader
@@ -57,4 +58,22 @@ def api_key_authenticate(payload: dict, aud: str):
     except Exception as ex:
         raise ex
     return user
+
+
+def check_user(request: Request):
+    try:
+        if not request.headers.get('authorization'):
+            raise HTTPException(detail='Jwt token required', status_code=401)
+        payload = decode_token(token=request.headers.get('authorization'), aud=[Audience.login.value])
+        producer = Producer()
+        producer.publish('cb_check_user', payload=payload)
+        request.state.user = producer.response
+    except Exception as ex:
+        raise HTTPException(detail=str(ex), status_code=400)
+
+
+def fetch_user(user_id: int):
+    producer = Producer()
+    producer.publish('cb_check_user', payload={'user': user_id})
+    return producer.response
 

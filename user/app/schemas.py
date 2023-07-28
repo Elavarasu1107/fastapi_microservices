@@ -48,7 +48,7 @@ class UserResponse(BaseModel):
 
     @validator('superuser_key')
     def validate_superuser(cls, value):
-        if value:
+        if value == "True":
             return True
         return False
 
