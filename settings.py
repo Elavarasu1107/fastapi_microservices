@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     email_host_password: str
     smtp: str
     smtp_port: int
+    mongo_host: str
+    mongo_port: int
+    mongo_db_name: str
 
     class Config:
         env_file = ".env"
