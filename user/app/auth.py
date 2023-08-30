@@ -63,7 +63,7 @@ def api_key_authenticate(payload: dict, aud: str):
 def check_user(request: Request):
     try:
         if not request.headers.get('authorization'):
-            raise HTTPException(detail='Jwt token required', status_code=401)
+            raise Exception('Jwt token required')
         payload = decode_token(token=request.headers.get('authorization'), aud=[Audience.login.value])
         producer = Producer()
         producer.publish('cb_check_user', payload=payload)

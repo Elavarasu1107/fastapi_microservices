@@ -1,11 +1,13 @@
 from bson import ObjectId
 from pydantic import BaseModel, validator, Field, EmailStr
 from typing import Optional, List
+from datetime import datetime
 
 
 class NoteSchema(BaseModel):
     title: str
     description: str
+    reminder: Optional[datetime]
 
     class Config:
         orm_mode = True

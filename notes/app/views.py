@@ -7,6 +7,9 @@ from fastapi.responses import JSONResponse
 from core.utils import APIResponse
 from core.monogodb import Notes
 from user.app import auth
+from redbeat import RedBeatSchedulerEntry as Task
+from celery.schedules import crontab, schedule
+from core.tasks import celery
 
 router = APIRouter(dependencies=[Security(APIKeyHeader(name='Authorization', auto_error=False)),
                                  Depends(auth.check_user)])
@@ -21,7 +24,18 @@ def create_note(request: Request, data: schemas.NoteSchema, response: Response):
         note = Notes.insert_one(data)
         note = Notes.find_one({'_id': ObjectId(note.inserted_id)})
         note = schemas.NoteResponse(**note)
-        return {'message': 'Note created', 'status': 201, 'data': note}
+        reminder = data.get('reminder')
+        if reminder:
+            payload = {'message': note.description, 'subject': note.title, 'recipient': request.state.user['email']}
+            task = Task(name=f'{data["title"]}',
+                        task='core.tasks.send_mail',
+                        schedule=crontab(month_of_year=reminder.month,
+                                         day_of_month=reminder.day,
+                                         hour=reminder.hour,
+                                         minute=reminder.minute),
+                        app=celery, args=[payload])
+            task.save()
+        return {'message': 'Note created', 'status': 201, 'data': 'note'}
     except Exception as ex:
         logger.exception(ex)
         response.status_code = status.HTTP_400_BAD_REQUEST

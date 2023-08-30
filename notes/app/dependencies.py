@@ -12,12 +12,10 @@ def fetch_label(label_id, user_id):
 
 def note_availability(note_id, user_id):
     my_note = Notes.find_one({'_id': ObjectId(note_id), 'user': ObjectId(user_id)})
-    print(my_note)
     note = None
     if not my_note:
         note = Notes.find_one({'_id': ObjectId(note_id),
                                f'collaborators.{user_id}': {'$exists': True}})
-    print(note)
     if not my_note and not note:
         raise Exception('Note not found')
     if not my_note and not user_id in note.get('collaborators'):
