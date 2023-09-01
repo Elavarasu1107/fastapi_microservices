@@ -35,7 +35,7 @@ def create_note(request: Request, data: schemas.NoteSchema, response: Response):
                                          minute=reminder.minute),
                         app=celery, args=[payload])
             task.save()
-        return {'message': 'Note created', 'status': 201, 'data': 'note'}
+        return {'message': 'Note created', 'status': 201, 'data': note}
     except Exception as ex:
         logger.exception(ex)
         response.status_code = status.HTTP_400_BAD_REQUEST

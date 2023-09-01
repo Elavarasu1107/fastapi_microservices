@@ -1,0 +1,139 @@
+version: "3.8"
+
+services:
+  mongo_db:
+    container_name: docker-mongo
+    image: mongo
+    restart: always
+    ports:
+      - 27017:27017
+    expose:
+      - 27017
+
+  postgres_db:
+    container_name: docker-postgres
+    image: postgres
+    restart: always
+    hostname: postgres_fundoo
+    volumes:
+      - ./init-multi-postgres-databases.sh:/docker-entrypoint-initdb.d/init-multi-postgres-databases.sh
+    environment:
+      - POSTGRES_MULTIPLE_DATABASES=ms_user,ms_note,ms_label
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_USER=${POSTGRES_USER}
+    ports:
+      - 5432:5432
+    expose:
+      - 5432
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PG_EMAIL}
+      - PGADMIN_DEFAULT_PASSWORD=${PG_PASSWORD}
+    ports:
+      - 5050:80
+    depends_on:
+      - postgres_db
+
+  redis:
+    container_name: docker-redis
+    image: redis
+    command: redis-server
+    ports:
+      - 6379:6379
+    expose:
+      - 6379
+
+  rabbitmq:
+    container_name: docker-rmq
+    hostname: rabbitmq
+    image: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    ports:
+      - 15672:15672
+    expose:
+      - 15762
+
+  app:
+    container_name: fundoo
+    image: fundoo_fastapi_micro
+    build: .
+    volumes:
+      - .:/app
+    depends_on:
+      - mongo_db
+      - postgres_db
+      - redis
+
+  fundoo_user:
+    container_name: user
+    image: fundoo_fastapi_micro
+    command: bash -c "uvicorn main:user_app --proxy-headers --host 0.0.0.0 --port ${USER_PORT}"
+    restart: always
+    ports:
+      - ${USER_PORT}:${USER_PORT}
+    expose:
+      - ${USER_PORT}
+    depends_on:
+      - app
+      - postgres_db
+
+  fundoo_note:
+    container_name: notes
+    image: fundoo_fastapi_micro
+    command: bash -c "uvicorn main:note_app --proxy-headers --host 0.0.0.0 --port ${NOTE_PORT}"
+    restart: always
+    ports:
+      - ${NOTE_PORT}:${NOTE_PORT}
+    expose:
+      - ${NOTE_PORT}
+    depends_on:
+      - app
+      - postgres_db
+
+  fundoo_label:
+    container_name: label
+    image: fundoo_fastapi_micro
+    command: bash -c "uvicorn main:label_app --proxy-headers --host 0.0.0.0 --port ${LABEL_PORT}"
+    restart: always
+    ports:
+      - ${LABEL_PORT}:${LABEL_PORT}
+    expose:
+      - ${LABEL_PORT}
+    depends_on:
+      - app
+      - postgres_db
+
+  celery_worker:
+    container_name: celery_worker
+    image: fundoo_fastapi_micro
+    command: bash -c "celery -A core.tasks.celery worker -l INFO --pool=solo"
+    restart: always
+    environment:
+      - C_FORCE_ROOT= true
+      - CELERY_BROKER_URL=${CELERY_BROKER}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT}
+    depends_on:
+      - redis
+
+  celery_beat:
+    container_name: redbeat
+    image: fundoo_fastapi_micro
+    command: bash -c "celery -A core.tasks.celery beat -l INFO"
+    restart: always
+    depends_on:
+      - redis
+
+  rabbit_consumer:
+    container_name: consumer
+    image: fundoo_fastapi_micro
+    command: bash -c "python3 core/rmq_consumer.py"
+    restart: always
+    depends_on:
+      - rabbitmq
+

@@ -28,4 +28,4 @@ def send_mail(payload):
         smtp.login(user=settings.email_host_user, password=settings.email_host_password)
         smtp.sendmail(settings.email_host_user, payload.get('recipient'), msg.as_string())
         smtp.quit()
-    print(f"Mail sent to {payload.get('recipient')}")
+    return f"Mail sent to {payload.get('recipient')}"

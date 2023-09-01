@@ -17,7 +17,7 @@ def register_user(request: Request, response: Response, data: schemas.RegisterVa
         user = User.find_one({'_id': ObjectId(user.inserted_id)}, {'password': 0})
         user = schemas.UserResponse(**user)
         message = f'{request.base_url}verify?token={auth.access_token({"user": user.id},aud=auth.Audience.register.value)}'
-        send_mail.delay(payload={'recipient': user.email, 'message': message})
+        send_mail.delay(payload={'recipient': user.email, 'message': message, 'subject': 'User registration'})
         return {'message': 'User registered', 'status': 201, 'data': user}
     except Exception as ex:
         response.status_code = status.HTTP_400_BAD_REQUEST
