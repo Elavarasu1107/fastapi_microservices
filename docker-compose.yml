@@ -21,6 +21,11 @@ services:
       - POSTGRES_MULTIPLE_DATABASES=ms_user,ms_note,ms_label
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_USER=${POSTGRES_USER}
+    healthcheck:
+      test: ["CMD", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 1
     ports:
       - 5432:5432
     expose:
@@ -29,6 +34,7 @@ services:
   pgadmin:
     container_name: pgadmin
     image: dpage/pgadmin4
+    restart: always
     environment:
       - PGADMIN_DEFAULT_EMAIL=${PG_EMAIL}
       - PGADMIN_DEFAULT_PASSWORD=${PG_PASSWORD}
@@ -49,15 +55,22 @@ services:
   rabbitmq:
     container_name: docker-rmq
     hostname: rabbitmq
-    image: rabbitmq
+    image: rabbitmq:3-management
     restart: always
     environment:
       - RABBITMQ_DEFAULT_USER=guest
       - RABBITMQ_DEFAULT_PASS=guest
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 10s
+      retries: 3
     ports:
       - 15672:15672
+      - 5672:5672
     expose:
       - 15762
+      - 5672
 
   app:
     container_name: fundoo
@@ -135,5 +148,6 @@ services:
     command: bash -c "python3 core/rmq_consumer.py"
     restart: always
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
 
