@@ -30,7 +30,7 @@ class RegisterValidation(BaseModel):
 
 
 class UserResponse(BaseModel):
-    id: str | ObjectId = Field(default=None, alias="_id")
+    id: str = Field(default=None, alias="_id")
     username: str
     first_name: str
     last_name: str
@@ -53,6 +53,7 @@ class UserResponse(BaseModel):
         return False
 
     class Config:
+        orm_mode = True
         allow_population_by_field_name = True
         arbitrary_types_allowed = True
 

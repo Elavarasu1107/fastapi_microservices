@@ -1,16 +1,13 @@
 from datetime import datetime, timedelta
-
-from bson import ObjectId
-
 from core.rmq_producer import Producer
 from settings import settings
 from fastapi import Security, Request, HTTPException
 from fastapi.security import APIKeyHeader
-from core.monogodb import User
 import jwt
 from user.app import password
 from typing import List
 import enum
+from core.graph_db import User
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
@@ -46,7 +43,7 @@ def decode_token(token: str, aud: List[str] = Audience.default.value):
 
 
 def authenticate(data):
-    user = User.find_one({'username': data['username']})
+    user = User.nodes.get_or_none(username=data['username'])
     if user and password.check_password(user, data['password']):
         return user
     return None
@@ -54,7 +51,7 @@ def authenticate(data):
 
 def api_key_authenticate(payload: dict, aud: str):
     try:
-        user = User.find_one({'_id': ObjectId(payload.get('user'))}, {'password': 0})
+        user = User.nodes.get(id=payload.get('user'))
     except Exception as ex:
         raise ex
     return user

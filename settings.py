@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     mongo_host: str
     mongo_port: int
     mongo_db_name: str
+    neo_uri: str
+    neo_user: str
+    neo_password: str
+    neo_db: str
 
     class Config:
         env_file = ".env"

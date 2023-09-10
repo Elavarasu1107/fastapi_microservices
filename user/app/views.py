@@ -1,11 +1,10 @@
 from fastapi import APIRouter, status, Request, Response, HTTPException
 from . import schemas, auth
 from core.utils import APIResponse
-from core.rmq_producer import Producer
 from core.tasks import send_mail
 from core.monogodb import User
-from bson.objectid import ObjectId
 from settings import logger
+from core.graph_db import User
 
 router = APIRouter()
 
@@ -13,9 +12,8 @@ router = APIRouter()
 @router.post('/register/', status_code=status.HTTP_201_CREATED, responses={201: {'model': APIResponse}})
 def register_user(request: Request, response: Response, data: schemas.RegisterValidation):
     try:
-        user = User.insert_one(data.dict())
-        user = User.find_one({'_id': ObjectId(user.inserted_id)}, {'password': 0})
-        user = schemas.UserResponse(**user)
+        user = User(**data.dict()).save()
+        user = schemas.UserResponse.from_orm(user)
         message = f'{request.base_url}verify?token={auth.access_token({"user": user.id},aud=auth.Audience.register.value)}'
         send_mail.delay(payload={'recipient': user.email, 'message': message, 'subject': 'User registration'})
         return {'message': 'User registered', 'status': 201, 'data': user}
@@ -28,30 +26,30 @@ def register_user(request: Request, response: Response, data: schemas.RegisterVa
 @router.post('/login/', status_code=status.HTTP_200_OK, responses={200: {'model': APIResponse}})
 def login_user(request: Request, response: Response, data: schemas.Login):
     user = auth.authenticate(data=data.dict())
-    if not user:
+    if not user and not user.is_verified:
         raise HTTPException(status_code=401, detail='Invalid Credentials')
     return {
-        'access': auth.access_token({'user': str(user['_id'])}, aud=auth.Audience.login.value),
-        'refresh': auth.refresh_token({'user': str(user['_id'])}, aud=auth.Audience.login.value)
+        'access': auth.access_token({'user': user.id}, aud=auth.Audience.login.value),
+        'refresh': auth.refresh_token({'user': user.id}, aud=auth.Audience.login.value)
     }
 
 
-@router.post('/authenticate/', status_code=status.HTTP_200_OK, include_in_schema=False)
-def authenticate_user(token: schemas.Token, response: Response):
-    try:
-        user = auth.api_key_authenticate(token.token, auth.Audience.login.value)
-        # if not user:
-        #     return {}
-        return user
-    except Exception as ex:
-        response.status_code = status.HTTP_401_UNAUTHORIZED
-        return {'message': str(ex)}
+# @router.post('/authenticate/', status_code=status.HTTP_200_OK, include_in_schema=False)
+# def authenticate_user(token: schemas.Token, response: Response):
+#     try:
+#         user = auth.api_key_authenticate(token.token, auth.Audience.login.value)
+#         # if not user:
+#         #     return {}
+#         return user
+#     except Exception as ex:
+#         response.status_code = status.HTTP_401_UNAUTHORIZED
+#         return {'message': str(ex)}
 
 
 @router.post('/retrieve/', status_code=status.HTTP_200_OK, include_in_schema=False)
 def retrieve_user(request: Request, response: Response, user_id: int = None):
     try:
-        user = User.objects.get(id=user_id)
+        user = User.nodes.get(id=user_id)
         return {'message': 'User retrieved', 'status': 200, 'data': user}
     except Exception as ex:
         response.status_code = status.HTTP_400_BAD_REQUEST
@@ -67,7 +65,8 @@ def verify_user(request: Request, response: Response, token: str = None):
         user = auth.api_key_authenticate(payload, auth.Audience.register.value)
         if not user:
             raise Exception('User not found to verify')
-        user = User.find_one_and_update(user, {'$set': {'is_verified': True}})
+        user.is_verified = True
+        user.save()
         return {'message': 'User verified successfully', 'status': 200, 'data': {}}
     except Exception as ex:
         response.status_code = status.HTTP_400_BAD_REQUEST
