@@ -7,7 +7,8 @@ from settings import logger, settings
 from fastapi.responses import JSONResponse
 from core.utils import APIResponse
 from user.app import auth
-from core.monogodb import Label
+from core.graph_db import Label
+
 
 router = APIRouter(dependencies=[Security(APIKeyHeader(name='Authorization', auto_error=False)),
                                  Depends(auth.check_user)])
@@ -18,10 +19,9 @@ router = APIRouter(dependencies=[Security(APIKeyHeader(name='Authorization', aut
 def create_label(request: Request, data: schemas.LabelSchema, response: Response):
     try:
         data = data.dict()
-        data.update({'user': ObjectId(request.state.user.get('_id'))})
-        label = Label.insert_one(data)
-        label = Label.find_one({'_id': ObjectId(label.inserted_id)})
-        label = schemas.LabelResponse(**label)
+        label = Label(**data).save()
+        label.user.connect(request.state.user)
+        label = schemas.LabelResponse.from_orm(label)
         return {'message': 'Label created', 'status': 201, 'data': label}
     except Exception as ex:
         logger.exception(ex)
@@ -33,8 +33,8 @@ def create_label(request: Request, data: schemas.LabelSchema, response: Response
             responses={200: {'model': APIResponse}})
 def get_label(request: Request, response: Response):
     try:
-        labels = list(Label.find({'user': ObjectId(request.state.user.get('_id'))}))
-        labels = [schemas.LabelResponse(**i) for i in labels]
+        labels = request.state.user.label.all()
+        labels = [schemas.LabelResponse.from_orm(i) for i in labels]
         return {'message': 'Labels retrieved', 'status': 200, 'data': labels}
     except Exception as ex:
         logger.exception(ex)
@@ -60,12 +60,12 @@ def retrieve(request: Request, response: Response, note_id: int):
 def update_label(request: Request, response: Response, label_id: str, data: schemas.LabelSchema):
     try:
         data = data.dict()
-        label = Label.find_one_and_update({'_id': ObjectId(label_id), 'user': ObjectId(request.state.user.get('_id'))},
-                                          {'$set': data})
-        if not label:
+        label = Label.nodes.get_or_none(id=label_id)
+        if not label or not label.user.is_connected(request.state.user):
             raise Exception('Label not found')
-        label = Label.find_one({'_id': ObjectId(label_id)})
-        label = schemas.LabelResponse(**label)
+        [setattr(label, x, y) for x, y in data.items()]
+        label.save()
+        label = schemas.LabelResponse.from_orm(label)
         return {'message': 'Label updated', 'status': 200, 'data': label}
     except Exception as ex:
         logger.exception(ex)
@@ -77,9 +77,10 @@ def update_label(request: Request, response: Response, label_id: str, data: sche
                responses={200: {'model': APIResponse}})
 def delete_label(request: Request, response: Response, label_id: str):
     try:
-        label = Label.find_one_and_delete({'_id': ObjectId(label_id), 'user': ObjectId(request.state.user.get('_id'))})
-        if not label:
+        label = Label.nodes.get_or_none(id=label_id)
+        if not label or not label.user.is_connected(request.state.user):
             raise Exception('Label not found')
+        label.delete()
         return {'message': 'Label deleted', 'status': 200, 'data': {}}
     except Exception as ex:
         logger.exception(ex)

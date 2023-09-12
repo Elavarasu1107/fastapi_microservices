@@ -15,9 +15,8 @@ class LabelResponse(BaseModel):
     id: str | ObjectId = Field(default=None, alias="_id")
     title: str
     color: str
-    user: str | ObjectId
 
-    @validator('id', 'user')
+    @validator('id')
     def validate_id(cls, value):
         if value == "":
             raise ValueError('field cannot be empty')

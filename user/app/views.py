@@ -26,7 +26,7 @@ def register_user(request: Request, response: Response, data: schemas.RegisterVa
 @router.post('/login/', status_code=status.HTTP_200_OK, responses={200: {'model': APIResponse}})
 def login_user(request: Request, response: Response, data: schemas.Login):
     user = auth.authenticate(data=data.dict())
-    if not user and not user.is_verified:
+    if not user or not user.is_verified:
         raise HTTPException(status_code=401, detail='Invalid Credentials')
     return {
         'access': auth.access_token({'user': user.id}, aud=auth.Audience.login.value),
@@ -62,7 +62,7 @@ def verify_user(request: Request, response: Response, token: str = None):
         if not token:
             raise Exception('Token required to verify user registration')
         payload = auth.decode_token(token=token, aud=auth.Audience.register.value)
-        user = auth.api_key_authenticate(payload, auth.Audience.register.value)
+        user = User.nodes.get_or_none(id=payload.get('user'))
         if not user:
             raise Exception('User not found to verify')
         user.is_verified = True

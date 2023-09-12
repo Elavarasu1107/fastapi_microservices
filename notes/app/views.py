@@ -1,15 +1,11 @@
-from bson import ObjectId
 from fastapi import APIRouter, Request, Response, status, Depends, Security
 from fastapi.security import APIKeyHeader
 from . import schemas, dependencies
 from settings import logger
 from fastapi.responses import JSONResponse
 from core.utils import APIResponse
-from core.monogodb import Notes
 from user.app import auth
-from redbeat import RedBeatSchedulerEntry as Task
-from celery.schedules import crontab, schedule
-from core.tasks import celery
+from core.graph_db import Note
 
 router = APIRouter(dependencies=[Security(APIKeyHeader(name='Authorization', auto_error=False)),
                                  Depends(auth.check_user)])
@@ -20,21 +16,13 @@ router = APIRouter(dependencies=[Security(APIKeyHeader(name='Authorization', aut
 def create_note(request: Request, data: schemas.NoteSchema, response: Response):
     try:
         data = data.dict()
-        data.update({'user': ObjectId(request.state.user.get('_id'))})
-        note = Notes.insert_one(data)
-        note = Notes.find_one({'_id': ObjectId(note.inserted_id)})
-        note = schemas.NoteResponse(**note)
+        note = Note(**data).save()
+        note.user.connect(request.state.user)
+        note = schemas.NoteResponse.from_orm(note)
         reminder = data.get('reminder')
         if reminder:
-            payload = {'message': note.description, 'subject': note.title, 'recipient': request.state.user['email']}
-            task = Task(name=f'{data["title"]}',
-                        task='core.tasks.send_mail',
-                        schedule=crontab(month_of_year=reminder.month,
-                                         day_of_month=reminder.day,
-                                         hour=reminder.hour,
-                                         minute=reminder.minute),
-                        app=celery, args=[payload])
-            task.save()
+            payload = {'message': note.description, 'subject': note.title, 'recipient': request.state.user.email}
+            dependencies.send_reminder(payload, reminder, f'{note.id}-{note.title}')
         return {'message': 'Note created', 'status': 201, 'data': note}
     except Exception as ex:
         logger.exception(ex)
@@ -46,11 +34,8 @@ def create_note(request: Request, data: schemas.NoteSchema, response: Response):
             responses={200: {'model': APIResponse}})
 def get_user_notes(request: Request, response: Response):
     try:
-        notes = list(Notes.find({'$or': [
-            {'user': ObjectId(request.state.user.get('_id'))},
-            {f'collaborators.{request.state.user.get("_id")}': {'$exists': True}}
-        ]}))
-        notes = [schemas.NoteResponse(**i) for i in notes]
+        notes = request.state.user.notes.all() + request.state.user.collab_notes.all()
+        notes = [schemas.NoteResponse.from_orm(i) for i in notes]
         return {'message': 'Notes retrieved', 'status': 200, 'data': notes}
     except Exception as ex:
         logger.exception(ex)
@@ -62,10 +47,10 @@ def get_user_notes(request: Request, response: Response):
             responses={200: {'model': APIResponse}})
 def retrieve(request: Request, response: Response, note_id: str):
     try:
-        note = Notes.find_one({'_id': ObjectId(note_id)})
+        note = Note.nodes.get_or_none(id=note_id, user=request.state.user.id)
         if not note:
             raise Exception('Note not found')
-        note = schemas.NoteResponse(**note)
+        note = schemas.NoteResponse.from_orm(note)
         return {'message': 'Notes retrieved', 'status': 200, 'data': note}
     except Exception as ex:
         logger.exception(ex)
@@ -78,10 +63,10 @@ def retrieve(request: Request, response: Response, note_id: str):
 def update_note(request: Request, response: Response, note_id: str, data: schemas.NoteSchema):
     try:
         data = data.dict()
-        note = dependencies.note_availability(note_id=note_id, user_id=request.state.user.get('_id'))
-        note = Notes.update_one(note, {'$set': data})
-        note = Notes.find_one({'_id': ObjectId(note_id)})
-        note = schemas.NoteResponse(**note)
+        note = dependencies.note_availability(note_id=note_id, user=request.state.user)
+        [setattr(note, x, y) for x, y in data.items()]
+        note.save()
+        note = schemas.NoteResponse.from_orm(note)
         return {'message': 'Note updated', 'status': 200, 'data': note}
     except Exception as ex:
         logger.exception(ex)
@@ -93,9 +78,10 @@ def update_note(request: Request, response: Response, note_id: str, data: schema
                responses={200: {'model': APIResponse}})
 def delete_note(request: Request, response: Response, note_id: str):
     try:
-        note = Notes.find_one_and_delete({'_id': ObjectId(note_id), 'user': ObjectId(request.state.user.get('_id'))})
-        if not note:
+        note = Note.nodes.get_or_none(id=note_id)
+        if not note or not note.user.is_connected(request.state.user):
             raise Exception('Note not found')
+        note.delete()
         return {'message': 'Note deleted', 'status': 200, 'data': {}}
     except Exception as ex:
         logger.exception(ex)
@@ -107,20 +93,16 @@ def delete_note(request: Request, response: Response, note_id: str):
              responses={200: {'model': APIResponse}})
 def add_collaborator(request: Request, response: Response, data: schemas.Collaborator):
     try:
-        note = Notes.find_one({'_id': ObjectId(data.note_id), 'user': ObjectId(request.state.user.get('_id'))})
-        if not note:
+        note = Note.nodes.get_or_none(id=data.note_id)
+        if not note or not note.user.is_connected(request.state.user):
             raise Exception('Note not found')
-        collaborators = {}
+        collaborators = note.collaborator.all()
         for user in data.user_id:
             user_data = auth.fetch_user(user)
             if not user_data:
                 raise Exception(f'User {user} not found')
-            collaborators.update({f'collaborators.{ObjectId(user_data["_id"])}': [{'$ref': 'user',
-                                                                                   '$id': ObjectId(user_data["_id"]),
-                                                                                   '$db': 'fundoo_microservices'},
-                                                                                  {'grant_access': data.grant_access,
-                                                                                   'username': user_data['username']}]})
-        note = Notes.find_one_and_update(note, {'$set': collaborators})
+            if user_data not in collaborators:
+                note.collaborator.connect(user_data, {'grant_access': data.grant_access})
         return {'message': 'Collaborator added', 'status': 200, 'data': {}}
     except Exception as ex:
         logger.exception(ex)
@@ -132,16 +114,14 @@ def add_collaborator(request: Request, response: Response, data: schemas.Collabo
                responses={200: {'model': APIResponse}})
 def delete_collaborator(request: Request, response: Response, data: schemas.Collaborator):
     try:
-        note = Notes.find_one({'_id': ObjectId(data.note_id), 'user': ObjectId(request.state.user.get('_id'))})
-        if not note:
+        note = Note.nodes.get_or_none(id=data.note_id)
+        if not note or not note.user.is_connected(request.state.user):
             raise Exception('Note not found')
-        collaborators = {}
         for user in data.user_id:
             user_data = auth.fetch_user(user)
             if not user_data:
                 raise Exception(f'User {user} not found')
-            collaborators.update({f'collaborators.{ObjectId(user_data["_id"])}': ""})
-        Notes.update_one(note, {'$unset': collaborators})
+            note.collaborator.disconnect(user_data)
         return {'message': 'Collaborator deleted', 'status': 200, 'data': {}}
     except Exception as ex:
         logger.exception(ex)
@@ -153,17 +133,12 @@ def delete_collaborator(request: Request, response: Response, data: schemas.Coll
              responses={200: {'model': APIResponse}})
 def add_label_with_note(request: Request, response: Response, data: schemas.LabelAssociate):
     try:
-        note = dependencies.note_availability(note_id=data.note_id, user_id=request.state.user.get('_id'))
-        labels = {}
+        note = dependencies.note_availability(note_id=data.note_id, user=request.state.user)
         for label in data.labels:
-            label_data = dependencies.fetch_label(label_id=label, user_id=request.state.user.get('_id'))
+            label_data = dependencies.fetch_label(label_id=label, user=request.state.user)
             if not label_data:
                 raise Exception(f'Label {label} not found')
-            labels.update({f'labels.{label_data["_id"]["$oid"]}': [{'$ref': 'label',
-                                                                    '$id': label_data["_id"]["$oid"],
-                                                                    '$db': 'fundoo_microservices'},
-                                                                   {'title': label_data['title']}]})
-        note = Notes.find_one_and_update(note, {'$set': labels})
+            note.labels.connect(label_data)
         return {'message': 'Label associated with note', 'status': 200, 'data': {}}
     except Exception as ex:
         logger.exception(ex)
@@ -175,14 +150,12 @@ def add_label_with_note(request: Request, response: Response, data: schemas.Labe
                responses={200: {'model': APIResponse}})
 def delete_label_from_note(request: Request, response: Response, data: schemas.LabelAssociate):
     try:
-        note = dependencies.note_availability(note_id=data.note_id, user_id=request.state.user.get('_id'))
-        labels = {}
+        note = dependencies.note_availability(note_id=data.note_id, user=request.state.user)
         for label in data.labels:
-            label_data = dependencies.fetch_label(label_id=label, user_id=request.state.user.get('_id'))
+            label_data = dependencies.fetch_label(label_id=label, user=request.state.user)
             if not label_data:
                 raise Exception(f'Label {label} not found')
-            labels.update({f'labels.{label_data["_id"]["$oid"]}': ""})
-        Notes.update_one(note, {'$unset': labels})
+            note.labels.connect(label_data)
         return {'message': 'Label removed from note', 'status': 200, 'data': {}}
     except Exception as ex:
         logger.exception(ex)

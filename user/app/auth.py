@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
-from core.rmq_producer import Producer
 from settings import settings
-from fastapi import Security, Request, HTTPException
+from fastapi import Request, HTTPException
 from fastapi.security import APIKeyHeader
 import jwt
 from user.app import password
@@ -54,7 +53,7 @@ def api_key_authenticate(payload: dict, aud: str):
         user = User.nodes.get(id=payload.get('user'))
     except Exception as ex:
         raise ex
-    return user
+    return user.json
 
 
 def check_user(request: Request):
@@ -62,15 +61,13 @@ def check_user(request: Request):
         if not request.headers.get('authorization'):
             raise Exception('Jwt token required')
         payload = decode_token(token=request.headers.get('authorization'), aud=[Audience.login.value])
-        producer = Producer()
-        producer.publish('cb_check_user', payload=payload)
-        request.state.user = producer.response
+        user = User.nodes.get(id=payload.get('user'))
+        request.state.user = user
     except Exception as ex:
         raise HTTPException(detail=str(ex), status_code=400)
 
 
-def fetch_user(user_id: int):
-    producer = Producer()
-    producer.publish('cb_check_user', payload={'user': user_id})
-    return producer.response
+def fetch_user(user_id):
+    user = User.nodes.get(id=user_id)
+    return user
 

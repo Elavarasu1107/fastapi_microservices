@@ -11,8 +11,8 @@ load_dotenv()
 class Producer:
 
     def __init__(self):
-        # self.connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
-        self.connection = pika.BlockingConnection(pika.URLParameters(os.environ.get('RMQ_URL')))
+        self.connection = pika.BlockingConnection(pika.ConnectionParameters(host=os.environ.get('RMQ_HOST')))
+        # self.connection = pika.BlockingConnection(pika.URLParameters(os.environ.get('RMQ_URL')))
         self.channel = self.connection.channel()
         self.reply_to = dict(map(lambda x: (f'reply_to_{x}', self.channel.queue_declare(f'reply_to_{x}')),
                                  os.environ.get('QUEUES').split(',')))

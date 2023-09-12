@@ -1,6 +1,6 @@
 from bson import ObjectId
 from pydantic import BaseModel, validator, Field, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 
 
@@ -17,29 +17,31 @@ class NoteResponse(BaseModel):
     id: str | ObjectId = Field(default=None, alias="_id")
     title: str
     description: str
-    user: str | ObjectId
-    collaborators: dict | List[str] = []
-    labels: dict | List[str] = []
+    reminder: str | datetime = None
+    # collaborators: dict | List[str] = Field(default=[])
+    # labels: dict | List[str] = Field(default=[])
 
-    @validator('id', 'user')
+    @validator('id')
     def validate_id(cls, value):
         if value == "":
             raise ValueError('field cannot be empty')
         return str(value)
 
-    @validator('collaborators')
-    def validate_collaborator(cls, value):
-        if value:
-            return [i[1].get('username') for i in value.values()]
-        return value
+    # @validator('collaborators')
+    # def validate_collaborator(cls, value):
+    #     if value:
+    #         return [i[1].get('username') for i in value.values()]
+    #     return value
 
-    @validator('labels')
-    def validate_label(cls, value):
-        if value:
-            return [i[1].get('title') for i in value.values()]
-        return []
+    # @validator('labels')
+    # def validate_label(cls, value):
+    #     print(value)
+    #     if value:
+    #         return [i[1].get('title') for i in value.values()]
+    #     return []
 
     class Config:
+        orm_mode = True
         allow_population_by_field_name = True
         arbitrary_types_allowed = True
 

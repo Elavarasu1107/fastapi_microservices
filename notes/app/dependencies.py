@@ -1,27 +1,32 @@
-from bson import ObjectId
-
-from core.monogodb import Notes
-from core.rmq_producer import Producer
-
-
-def fetch_label(label_id, user_id):
-    producer = Producer()
-    producer.publish('cb_check_label', payload={'label': label_id, 'user': user_id})
-    return producer.response
+from redbeat import RedBeatSchedulerEntry as Task
+from celery.schedules import crontab
+from core.tasks import celery
+from core.graph_db import Note, Label
 
 
-def note_availability(note_id, user_id):
-    my_note = Notes.find_one({'_id': ObjectId(note_id), 'user': ObjectId(user_id)})
-    note = None
-    if not my_note:
-        note = Notes.find_one({'_id': ObjectId(note_id),
-                               f'collaborators.{user_id}': {'$exists': True}})
-    if not my_note and not note:
+def fetch_label(label_id, user):
+    label = Label.nodes.get_or_none(id=label_id)
+    if not label.user.is_connected(user):
+        return None
+    return label
+
+
+def note_availability(note_id, user):
+    note = Note.nodes.get_or_none(id=note_id)
+    if not note:
         raise Exception('Note not found')
-    if not my_note and not user_id in note.get('collaborators'):
-        raise Exception('Cannot modify un-collaborated note')
-    if not my_note and not note.get('collaborators').get(user_id)[1].get('grant_access'):
-        raise Exception('Access denied to update this note')
-    if my_note:
-        note = my_note
+    if not note.user.is_connected(user) and not note.collaborator.is_connected(user) and \
+            user not in note.collaborator.match(grant_access=True).all():
+        raise Exception('Note not found or permission denied')
     return note
+
+
+def send_reminder(payload, reminder, task_name):
+    task = Task(name=task_name,
+                task='core.tasks.send_mail',
+                schedule=crontab(month_of_year=reminder.month,
+                                 day_of_month=reminder.day,
+                                 hour=reminder.hour,
+                                 minute=reminder.minute),
+                app=celery, args=[payload])
+    task.save()
