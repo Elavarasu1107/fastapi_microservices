@@ -155,7 +155,7 @@ def delete_label_from_note(request: Request, response: Response, data: schemas.L
             label_data = dependencies.fetch_label(label_id=label, user=request.state.user)
             if not label_data:
                 raise Exception(f'Label {label} not found')
-            note.labels.connect(label_data)
+            note.labels.disconnect(label_data)
         return {'message': 'Label removed from note', 'status': 200, 'data': {}}
     except Exception as ex:
         logger.exception(ex)
