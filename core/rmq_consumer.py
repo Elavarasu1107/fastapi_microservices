@@ -20,8 +20,8 @@ load_dotenv()
 class Consumer:
 
     def __init__(self):
-        # self.connection = pika.BlockingConnection(pika.ConnectionParameters(host=environ.get('RMQ_HOST'), port=int(environ.get('RMQ_PORT'))))
-        self.connection = pika.BlockingConnection(pika.URLParameters(environ.get('RMQ_URL')))
+        self.connection = pika.BlockingConnection(pika.ConnectionParameters(host=environ.get('RMQ_HOST'),
+                                                                            port=int(environ.get('RMQ_PORT'))))
         self.channel = self.connection.channel()
         self.callbacks = {i: getattr(self, i) for i in dir(self) if i.startswith('cb_') and callable(getattr(self, i))}
         tuple(map(lambda x: self.channel.queue_declare(queue=x), self.callbacks.keys()))

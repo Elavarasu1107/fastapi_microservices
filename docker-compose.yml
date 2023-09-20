@@ -46,7 +46,10 @@ services:
   redis:
     container_name: docker-redis
     image: redis
-    command: redis-server
+    command: redis-server --requirepass ${REDIS_PWD}
+    restart: always
+    environment:
+      REDIS_PWD: ${REDIS_PWD}
     ports:
       - 6379:6379
     expose:
@@ -125,7 +128,7 @@ services:
   celery_worker:
     container_name: celery_worker
     image: fundoo_fastapi_micro
-    command: bash -c "celery -A core.tasks.celery worker -l INFO --pool=solo"
+    command: bash -c "celery -A core.tasks.celery worker -l INFO --pool=solo --uid=0"
     restart: always
     environment:
       - C_FORCE_ROOT= true
