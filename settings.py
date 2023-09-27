@@ -29,7 +29,21 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-logging.basicConfig(filename='fundoo.log', encoding='utf-8', level=logging.WARNING, filemode='w',
-                    format='%(asctime)s:%(filename)s:%(levelname)s:%(lineno)d:%(message)s',
-                    datefmt='%m/%d/%Y %I:%M:%S %p')
+# logging.basicConfig(filename='fundoo.log', encoding='utf-8', level=logging.WARNING, filemode='w',
+#                     format='%(asctime)s:%(filename)s:%(levelname)s:%(lineno)d:%(message)s',
+#                     datefmt='%m/%d/%Y %I:%M:%S %p')
 logger = logging.getLogger()
+
+formatter = logging.Formatter(fmt='%(asctime)s:%(filename)s:%(levelname)s:%(lineno)d:%(message)s',
+                              datefmt='%m/%d/%Y %I:%M:%S %p')
+
+console = logging.StreamHandler()
+console.setLevel(logging.DEBUG)
+console.setFormatter(formatter)
+
+file = logging.FileHandler('fundoo.log')
+file.setLevel(logging.WARNING)
+file.setFormatter(formatter)
+
+logger.addHandler(console)
+logger.addHandler(file)

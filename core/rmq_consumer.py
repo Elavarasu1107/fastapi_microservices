@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 import pika
 import json
-import smtplib
-import ssl
-from email.message import EmailMessage
 from dotenv import load_dotenv
 from os import environ
 import sys
@@ -42,9 +39,8 @@ class Consumer:
                 properties=pika.BasicProperties(correlation_id=properties.correlation_id),
                 body=json.dumps(user_data)
             )
-            print(f'{message}: verified and sent response successfully')
+            logger.info(f'{message}: verified and sent response successfully')
         except Exception as ex:
-            print(ex)
             logger.exception(ex)
 
     def cb_check_label(self, ch, method, properties, body):
@@ -62,14 +58,13 @@ class Consumer:
                 properties=pika.BasicProperties(correlation_id=properties.correlation_id),
                 body=json_util.dumps(label_data)
             )
-            print(f'{message}: verified and sent response successfully')
+            logger.info(f'{message}: verified and sent response successfully')
         except Exception as ex:
-            print(ex)
             logger.exception(ex)
 
     def receiver(self):
         [self.channel.basic_consume(queue=i, on_message_callback=j, auto_ack=True) for i, j in self.callbacks.items()]
-        print('[*] Receive Server Started. To exit press CTRL+C')
+        logger.info('Consumer started')
         self.channel.start_consuming()
 
 
@@ -78,4 +73,6 @@ if __name__ == '__main__':
         consumer = Consumer()
         consumer.receiver()
     except KeyboardInterrupt:
-        print("Connection closed")
+        logger.exception('Connection closed')
+    except:
+        pass
