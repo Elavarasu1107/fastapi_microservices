@@ -1,15 +1,17 @@
 #!/usr/bin/env python
-import pika
 import json
-from dotenv import load_dotenv
-from os import environ
 import sys
-from bson import json_util
-sys.path.append('./')
+from os import environ
 
-from user.app import auth
+import pika
+from bson import json_util
+from dotenv import load_dotenv
+
+sys.path.append("./")
+
 from labels.app import dependencies
 from settings import logger
+from user.app import auth
 
 load_dotenv()
 
@@ -17,29 +19,42 @@ load_dotenv()
 class Consumer:
 
     def __init__(self):
-        self.connection = pika.BlockingConnection(pika.ConnectionParameters(host=environ.get('RMQ_HOST'),
-                                                                            port=int(environ.get('RMQ_PORT'))))
+        self.connection = pika.BlockingConnection(
+            pika.ConnectionParameters(
+                host=environ.get("RMQ_HOST"),
+                port=int(environ.get("RMQ_PORT")),
+                credentials=pika.PlainCredentials(
+                    username=environ.get("RMQ_USERNAME"), password=environ.get("RMQ_PASSWORD")
+                ),
+            )
+        )
         self.channel = self.connection.channel()
-        self.callbacks = {i: getattr(self, i) for i in dir(self) if i.startswith('cb_') and callable(getattr(self, i))}
+        self.callbacks = {
+            i: getattr(self, i)
+            for i in dir(self)
+            if i.startswith("cb_") and callable(getattr(self, i))
+        }
         tuple(map(lambda x: self.channel.queue_declare(queue=x), self.callbacks.keys()))
+        logger.info("Consumer Initialized successfully")
+        print("Consumer Initialized successfully")
 
     def cb_check_user(self, ch, method, properties, body):
         try:
             user_data = auth.api_key_authenticate(json.loads(body), auth.Audience.login.value)
             message = None
             if user_data:
-                user_data['_id'] = str(user_data['_id'])
-                message = user_data['_id']
+                user_data["_id"] = str(user_data["_id"])
+                message = user_data["_id"]
             else:
                 user_data = {}
                 message = "User not found"
             ch.basic_publish(
-                exchange='',
+                exchange="",
                 routing_key=properties.reply_to,
                 properties=pika.BasicProperties(correlation_id=properties.correlation_id),
-                body=json.dumps(user_data)
+                body=json.dumps(user_data),
             )
-            logger.info(f'{message}: verified and sent response successfully')
+            logger.info(f"{message}: verified and sent response successfully")
         except Exception as ex:
             logger.exception(ex)
 
@@ -48,31 +63,35 @@ class Consumer:
             label_data = dependencies.fetch_label(json.loads(body))
             message = None
             if label_data:
-                message = label_data['_id']
+                message = label_data["_id"]
             else:
                 label_data = {}
                 message = "Label not found"
             ch.basic_publish(
-                exchange='',
+                exchange="",
                 routing_key=properties.reply_to,
                 properties=pika.BasicProperties(correlation_id=properties.correlation_id),
-                body=json_util.dumps(label_data)
+                body=json_util.dumps(label_data),
             )
-            logger.info(f'{message}: verified and sent response successfully')
+            logger.info(f"{message}: verified and sent response successfully")
         except Exception as ex:
             logger.exception(ex)
 
     def receiver(self):
-        [self.channel.basic_consume(queue=i, on_message_callback=j, auto_ack=True) for i, j in self.callbacks.items()]
-        logger.info('Consumer started')
+        [
+            self.channel.basic_consume(queue=i, on_message_callback=j, auto_ack=True)
+            for i, j in self.callbacks.items()
+        ]
+        logger.info("Consumer started")
         self.channel.start_consuming()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         consumer = Consumer()
         consumer.receiver()
     except KeyboardInterrupt:
-        logger.exception('Connection closed')
+        logger.info("Connection closed")
+        print("Connection closed")
     except:
         pass
